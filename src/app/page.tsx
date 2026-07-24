@@ -102,7 +102,7 @@ export default function Home() {
                         <input type="checkbox" style={{ accentColor: 'var(--accent-secondary)' }} />
                         <span>{item.action}</span>
                         <span style={{ fontSize: '0.75rem', background: 'var(--bg-glass)', padding: '2px 6px', borderRadius: '4px' }}>
-                          {new Date(item.deadline).toLocaleDateString()}
+                          {item.deadline ? new Date(item.deadline).toLocaleDateString() : 'No deadline'}
                         </span>
                       </div>
                     ))}
