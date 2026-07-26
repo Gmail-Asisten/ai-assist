@@ -122,9 +122,10 @@ export default function FolderPage() {
           });
         });
         
-        if (!selectedEmailId && rawList.length > 0) {
-          setSelectedEmailId(rawList[0].id);
-        }
+        setSelectedEmailId(prev => {
+          if (!prev && rawList.length > 0) return rawList[0].id;
+          return prev;
+        });
       } else {
         setError(data.error || "Failed to fetch emails");
       }
@@ -134,7 +135,7 @@ export default function FolderPage() {
       setIsLoading(false);
       setIsSyncing(false);
     }
-  }, [accessToken, userId, selectedEmailId, folder]);
+  }, [accessToken, userId, folder]);
 
   // Initial fetch and polling
   useEffect(() => {
