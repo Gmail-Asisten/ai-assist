@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import type { PipelineResult, RawEmail } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,9 +47,41 @@ export default function FolderPage() {
     { role: "ai", content: "Hi! I'm your AI assistant. Ask me anything about this email or your inbox." },
   ]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isProcessingEmail, setIsProcessingEmail] = useState(false);
+  const processingRefs = useRef<Set<string>>(new Set());
 
   const selectedData = emails.find((e) => e.emailId === selectedEmailId);
   const selectedEmail = selectedData?.analysis?.rawEmail;
+
+  // Lazy load AI features for the selected email
+  useEffect(() => {
+    if (!selectedEmailId || !accessToken || !selectedData) return;
+    
+    if (selectedData.summary || selectedData.classification || processingRefs.current.has(selectedEmailId)) {
+      return;
+    }
+
+    let isMounted = true;
+    processingRefs.current.add(selectedEmailId);
+    setIsProcessingEmail(true);
+    
+    fetch("/api/agents/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailId: selectedEmailId, accessToken, userId })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && isMounted) {
+          setEmails(prev => prev.map(e => e.emailId === selectedEmailId ? data.data : e));
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsProcessingEmail(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [selectedEmailId, accessToken, userId, selectedData]);
 
   const fetchEmails = useCallback(async (isBackground = false) => {
     if (!accessToken) return;
@@ -66,14 +98,32 @@ export default function FolderPage() {
           userId: userId || "anonymous",
           maxResults: 15,
           labelIds,
+          processEmails: false,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
-        setEmails(data.data.processed);
-        if (!selectedEmailId && data.data.processed.length > 0) {
-          setSelectedEmailId(data.data.processed[0].emailId);
+        const rawList = data.data.emails || [];
+        
+        setEmails(prev => {
+          return rawList.map((raw: any) => {
+            const existing = prev.find(e => e.emailId === raw.id);
+            if (existing && (existing.summary || existing.classification)) return existing;
+            return {
+              emailId: raw.id,
+              threadId: raw.threadId,
+              analysis: { rawEmail: raw },
+              classification: null,
+              summary: null,
+              draftReplies: null,
+              reminders: []
+            } as unknown as PipelineResult;
+          });
+        });
+        
+        if (!selectedEmailId && rawList.length > 0) {
+          setSelectedEmailId(rawList[0].id);
         }
       } else {
         setError(data.error || "Failed to fetch emails");
@@ -339,6 +389,17 @@ export default function FolderPage() {
               className="max-w-3xl mx-auto w-full px-8 py-8 pb-16"
             >
               {/* AI Summary Panel */}
+              {isProcessingEmail && !selectedData.summary && (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="relative rounded-2xl border border-border bg-muted/30 p-6 mb-8 overflow-hidden flex flex-col items-center justify-center gap-3 text-muted-foreground"
+                >
+                  <RefreshCw className="w-6 h-6 animate-spin text-foreground/40" />
+                  <p className="text-sm">AI is analyzing this email...</p>
+                </motion.div>
+              )}
+
               {selectedData.summary && (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
