@@ -44,7 +44,7 @@ Respond to the user's queries based on the email context. If the user asks about
     const responseText = await generateText({
       systemPrompt: systemPrompt,
       userPrompt: fullUserPrompt,
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       temperature: 0.7,
       maxTokens: 1024,
     });

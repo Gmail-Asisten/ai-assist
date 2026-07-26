@@ -52,7 +52,7 @@ export async function generateJSON<T>(options: {
   maxTokens?: number;
 }): Promise<T> {
   const {
-    model: modelName = "gemini-3.5-flash",
+    model: modelName = "gemini-2.5-flash",
     systemPrompt,
     userPrompt,
     temperature = 0.1,
@@ -102,7 +102,7 @@ export async function generateText(options: {
   maxTokens?: number;
 }): Promise<string> {
   const {
-    model: modelName = "gemini-3.5-pro",
+    model: modelName = "gemini-2.5-pro",
     systemPrompt,
     userPrompt,
     temperature = 0.7,
