@@ -39,7 +39,7 @@ Respond to the user's queries based on this email context. Be concise and helpfu
     const responseText = await generateText({
       systemPrompt: systemPrompt,
       userPrompt: fullUserPrompt,
-      model: "gemini-1.5-flash",
+      model: "gemini-3.5-flash",
       temperature: 0.7,
       maxTokens: 1024,
     });
