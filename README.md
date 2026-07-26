@@ -1,50 +1,71 @@
-# Mail Assistant - Enterprise Multi-Agent System
+# 📧 AI Gmail Assistant - Enterprise Multi-Agent System
 
-Proyek ini telah dikembangkan menjadi arsitektur **Enterprise Multi-Agent** yang dirancang khusus untuk memilah, menganalisis, dan membalas email masuk pelanggan perusahaan secara otomatis menggunakan teknologi **Retrieval-Augmented Generation (RAG)**.
+Proyek ini adalah arsitektur **Enterprise Multi-Agent** yang dirancang khusus untuk memilah, menganalisis, merangkum, dan membalas email masuk (inbox) secara otomatis menggunakan teknologi **Retrieval-Augmented Generation (RAG)** dan kecerdasan buatan mutakhir dari Google Gemini.
 
-## 🏆 Kriteria Pemenuhan Tugas (ST167)
+## 🌟 Fitur Utama
 
-Proyek ini secara ketat merespons seluruh kebutuhan *rubrik* tugas:
+- **Smart Inbox Analysis**: Email yang masuk akan langsung dianalisis secara otomatis, mengekstrak entitas penting, nama, kontak, dan niat (intent) pengirim.
+- **Priority & Division Routing**: Sistem _routing_ cerdas mendeteksi konteks email dan mendistribusikannya ke agen divisi yang tepat (Customer Service, Logistik, atau Finance) berdasarkan prioritasnya.
+- **Global AI Summary**: Mampu merangkum hingga 50 email sekaligus untuk memberikan *executive briefing* kepada Anda (menghitung jumlah email urgen, penting, dan aksi yang harus segera dilakukan).
+- **Semantic Vector Search (RAG)**: Pencarian dokumen SOP perusahaan secepat kilat menggunakan `pgvector` di PostgreSQL. Agen tidak akan berhalusinasi karena panduannya diambil langsung dari SOP internal perusahaan.
+- **Multi-Agent Evaluation**: Dilengkapi dengan `Evaluator Agent` (LLM-as-a-Judge) yang bertugas memeriksa kualitas draf balasan dari agen lain, menilai akurasi, efektivitas, dan memastikan tidak ada pelanggaran kebijakan.
+- **Smart Replies**: Klik 1 tombol untuk langsung mengirim draf balasan (yang sudah dipilah & dievaluasi oleh AI) langsung ke email pengguna akhir melalui Gmail API.
 
-1. **Studi Kasus Enterprise & Masalah Antar Divisi (ST167.CPMK08.2 - 10 Poin)**
-   - **Masalah:** Email pelanggan (_inbox_) perusahaan sering tercampur antara komplain pengiriman, permintaan _refund_ uang, dan informasi layanan umum, sehingga lambat ditangani jika hanya menggunakan satu staf CS.
-   - **Solusi:** Sistem _routing_ yang secara cerdas mendeteksi konteks email dan mendistribusikannya ke masing-masing perwakilan (agen) divisi.
+## 🤖 Model AI yang Digunakan (Optimasi Free Tier)
 
-2. **Model Multi-Agent yang Saling Berinteraksi (ST167.CPMK22.6 - 10 Poin)**
-   - Sistem ini diorkestrasikan agar agen-agen independen dapat berkomunikasi dalam satu _pipeline_ tugas: 
-     `Inbox Analyzer` ➔ `Priority Classifier` ➔ `Division Agent (CS/Logistics/Finance)` ➔ `Evaluator Agent`.
+Sistem ini didesain untuk mendistribusikan beban limit API dengan memanfaatkan seluruh jajaran model gratis dari Google Gemini:
+- **Gemini 2.0 Flash**: Digunakan untuk *Summary Generator* dan *Customer Service* (mampu membaca puluhan email sekaligus berkat *context window* yang masif).
+- **Gemini 1.5 Pro**: Digunakan untuk *Evaluator* dan *Finance Agent* (membutuhkan nalar logika dan perhitungan akurasi yang tinggi).
+- **Gemini 1.5 Flash**: Digunakan untuk *Logistics Agent* dan *Priority Classifier* (cepat dan sangat tangguh).
+- **Gemini 1.5 Flash-8B**: Digunakan untuk *Inbox Analyzer* dan *Reminder Scheduler* (sangat ringan dan instan untuk tugas parsing sederhana).
 
-3. **Pendekatan RAG, Embedding, dan Vector DB (ST167.CPMK22.5, CPMK22.7 - 60 Poin)**
-   - **Model:** Menggunakan **Google Gemini 1.5 Flash** untuk penalaran dan `text-embedding-004` untuk mengubah teks menjadi *embeddings*.
-   - **Vector Database:** Menggunakan PostgreSQL yang di-*upgrade* dengan ekstensi `pgvector`.
-   - **RAG Pipeline:** Setiap kali Agen Divisi menerima tiket email, ia tidak menjawab menggunakan pengetahuannya sendiri (menghindari bias/halusinasi), melainkan mencari SOP internal spesifik dari Vector DB (menggunakan *Cosine Similarity*) sebagai panduan utama/contekan untuk membalas pelanggan.
+## 🛠 Teknologi Pendukung
 
-4. **Evaluator Model pada Multi-Agent (ST167.CPMK22.6 - 20 Poin)**
-   - **LLM-as-a-Judge:** Di akhir alur pemrosesan, sebuah `Evaluator Agent` diterjunkan khusus untuk memeriksa draf balasan yang dibuat oleh Agen Divisi.
-   - Agen ini akan menilai persentase dari: **Accuracy, Effectiveness, Efficiency, dan Explainability**. 
-   - **Keamanan (Hallucination):** Evaluator akan mendeteksi apakah Agen Divisi berhalusinasi (misalnya: menjanjikan uang kompensasi kepada pelanggan di luar kebijakan SOP yang ada di *database*).
-
----
-
-## 🚀 Fitur Utama
-- **Semantic Vector Search:** Pencarian dokumen SOP perusahaan secepat kilat menggunakan *pgvector*.
-- **Smart Division Routing:** Email terpisah secara spesifik (Logistik, Finance, CS Umum).
-- **Evaluator Dashboard UI:** Tampilan skor evaluasi performa AI secara _real-time_ di dalam UI setiap email.
-- **Smart Replies & Actions:** Klik 1 tombol untuk langsung mengirim draf balasan yang sudah dipilah dan dipastikan aman oleh sistem Evaluator.
-
-## 🛠 Teknologi yang Digunakan
-- **Frontend / Backend:** Next.js (App Router), React, TailwindCSS
-- **Database:** PostgreSQL + Prisma ORM + pgvector (Ekstensi Vektor)
-- **AI Models:** `@google/generative-ai` (Gemini SDK)
-- **Authentication:** NextAuth (Google Provider)
+- **Frontend / Backend:** Next.js (App Router), React, TailwindCSS, TypeScript
+- **Database:** PostgreSQL + Prisma ORM + pgvector
+- **AI Integration:** `@google/generative-ai` (Gemini SDK)
+- **Authentication:** NextAuth.js (Google OAuth 2.0)
 - **Deployment:** NGINX, PM2 (Ubuntu VPS)
 
-## 🔧 Setup Instalasai (Lokal)
-1. Klon *repository* ini.
-2. Jalankan `npm install`.
-3. Siapkan *file* `.env.local` dan masukkan:
-   - `DATABASE_URL` (database Postgres wajib mendukung ekstensi *vector*).
-   - `GEMINI_API_KEY`
-   - Kredensial `GOOGLE_CLIENT_ID` dan rahasia *OAuth* lainnya.
-4. Jalankan `npx prisma db push` untuk inisialisasi skema dan *pgvector*.
-5. Jalankan `npm run dev`.
+## 🔧 Setup Instalasi (Lokal)
+
+1. Klon *repository* ini ke komputer Anda:
+   ```bash
+   git clone <url-repo-anda>
+   cd ai-gmail-assistant
+   ```
+2. Instal semua dependensi:
+   ```bash
+   npm install
+   ```
+3. Salin `.env.example` ke `.env.local` (atau buat file `.env.local`) dan masukkan:
+   - `DATABASE_URL` (Database PostgreSQL wajib mendukung ekstensi *vector*).
+   - `GEMINI_API_KEY` (Dapatkan dari Google AI Studio).
+   - `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET` (Untuk login Google dan akses Gmail API).
+   - `NEXTAUTH_SECRET` (Kunci rahasia enkripsi sesi lokal).
+4. Migrasi skema database Prisma (Otomatis mengaktifkan ekstensi `pgvector`):
+   ```bash
+   npx prisma db push
+   ```
+5. Jalankan server lokal:
+   ```bash
+   npm run dev
+   ```
+
+Aplikasi sekarang dapat diakses melalui `http://localhost:3000`.
+
+## 🚀 Deployment ke VPS
+
+Untuk proses *deployment* ke production:
+1. Pastikan Anda telah melakukan *build* aplikasi.
+   ```bash
+   npm run build
+   ```
+2. Pindahkan seluruh file (termasuk folder `.next` hasil build) ke VPS menggunakan alat transfer seperti `rsync` atau Git.
+3. Di dalam VPS, gunakan **PM2** untuk menjalankan aplikasi:
+   ```bash
+   pm2 start npm --name "ai-gmail-assistant" -- start
+   ```
+
+---
+*Dikembangkan menggunakan teknologi AI Generatif tercanggih untuk kebutuhan Enterprise tingkat tinggi.*

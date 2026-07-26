@@ -3,10 +3,11 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, Star, Send, Trash2, Settings, Sparkles, LogOut } from "lucide-react";
+import { Inbox, Star, Send, Trash2, Settings, Sparkles, LogOut, Activity } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const NAV_ITEMS = [
+  { href: "/summary", label: "Summary", icon: Activity },
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: 3 },
   { href: "/starred", label: "Starred", icon: Star },
   { href: "/sent", label: "Sent", icon: Send },

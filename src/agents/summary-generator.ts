@@ -8,6 +8,8 @@ import { htmlToPlainText } from "@/lib/gmail";
 import {
   SUMMARIZER_SYSTEM_PROMPT,
   summarizerUserPrompt,
+  GLOBAL_SUMMARIZER_SYSTEM_PROMPT,
+  summarizerInboxPrompt
 } from "./prompts/summarizer.prompt";
 import { emailContentBlock, threadContentBlock } from "./prompts/common.prompt";
 import { DEFAULT_AGENT_CONFIGS } from "@/types/agent";
@@ -19,6 +21,25 @@ import type {
   ExtractedDate,
   ParticipantSummary,
 } from "@/types/email";
+
+// Output shape from the LLM for inbox summary
+export interface InboxSummaryOutput {
+  executiveSummary: string;
+  urgencyBreakdown: {
+    urgent: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  categoryBreakdown: {
+    category: string;
+    count: number;
+  }[];
+  topActionItems: {
+    action: string;
+    priority: "urgent" | "high" | "medium" | "low";
+  }[];
+}
 
 // Output shape from the LLM
 interface SummarizerLLMOutput {
@@ -153,4 +174,32 @@ function buildSummary(
     keyDates,
     participantSummary,
   };
+}
+
+/**
+ * Generate a high-level briefing for the entire inbox.
+ */
+export async function summarizeInbox(emails: RawEmail[]): Promise<InboxSummaryOutput> {
+  const config = DEFAULT_AGENT_CONFIGS["summary-generator"];
+  
+  // Format emails for the prompt
+  const emailsContent = emails
+    .map((e, idx) => `
+[EMAIL ${idx + 1}]
+From: ${e.fromName} <${e.from}>
+Date: ${e.date}
+Subject: ${e.subject}
+Snippet: ${e.snippet}
+    `.trim())
+    .join("\n\n");
+
+  const llmOutput = await generateJSON<InboxSummaryOutput>({
+    model: config.model,
+    systemPrompt: GLOBAL_SUMMARIZER_SYSTEM_PROMPT,
+    userPrompt: summarizerInboxPrompt(emailsContent),
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+  });
+
+  return llmOutput;
 }

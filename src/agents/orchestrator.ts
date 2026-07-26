@@ -151,7 +151,7 @@ export async function processEmail(
   }
 
   // Agent 4: Division Agent & Evaluator
-  if (classified.routing.shouldDraftReply && !skipAgents.includes("reply")) {
+  if (!skipAgents.includes("reply")) {
     parallelTasks.push(
       (async () => {
         try {
@@ -180,8 +180,10 @@ export async function processEmail(
                 evaluation,
               }
             ],
+            quickActions: [],
             suggestedTones: ["formal"],
             isAutoReplySafe: !evaluation.hallucination_detected && evaluation.accuracy > 80,
+            handledByDivision: division,
           };
           
           console.log(

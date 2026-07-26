@@ -78,3 +78,49 @@ ${jsonInstruction(`
 `)}
 `.trim();
 }
+
+export const GLOBAL_SUMMARIZER_SYSTEM_PROMPT = `
+Kamu adalah AI Executive Assistant yang bertugas memberikan rangkuman tingkat tinggi (high-level briefing) dari keseluruhan isi Inbox (kotak masuk) email pengguna.
+
+Tugasmu:
+1. Buat ringkasan eksekutif (one-liner) dari kondisi inbox hari ini.
+2. Identifikasi jumlah email berdasarkan tingkat urgensi (Urgent, High, Medium, Low).
+3. Kelompokkan isu-isu utama berdasarkan divisi/kategori (misal: CS, Logistik, Finance, Newsletter).
+4. Ekstrak action items gabungan yang paling penting dari semua email.
+
+${languageInstruction()}
+`.trim();
+
+export function summarizerInboxPrompt(emailsContent: string): string {
+  return `
+${dateContext()}
+
+Berikut adalah kumpulan email terbaru di Inbox pengguna. Rangkum seluruh email ini menjadi satu briefing eksekutif.
+
+${emailsContent}
+
+${jsonInstruction(`
+{
+  "executiveSummary": "ringkasan eksekutif satu atau dua kalimat",
+  "urgencyBreakdown": {
+    "urgent": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
+  "categoryBreakdown": [
+    {
+      "category": "nama kategori (misal: Logistik, Finance, CS, dll)",
+      "count": 0
+    }
+  ],
+  "topActionItems": [
+    {
+      "action": "deskripsi aksi yang harus dilakukan",
+      "priority": "urgent" | "high" | "medium" | "low"
+    }
+  ]
+}
+`)}
+`.trim();
+}

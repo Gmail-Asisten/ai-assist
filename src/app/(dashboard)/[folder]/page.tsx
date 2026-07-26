@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -527,10 +531,18 @@ export default function FolderPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
                 >
-                  <h3 className="flex items-center gap-2 font-bold text-sm text-foreground mb-4 uppercase tracking-wider">
-                    <Bot className="w-4 h-4" />
-                    Smart Replies
-                  </h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="flex items-center gap-2 font-bold text-sm text-foreground uppercase tracking-wider">
+                      <Bot className="w-4 h-4" />
+                      Smart Replies
+                    </h3>
+                    {(selectedData.draftReplies as any).handledByDivision && (
+                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Handled by: {(selectedData.draftReplies as any).handledByDivision} Division
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex flex-wrap gap-2 mb-5">
                     {selectedData.draftReplies.quickActions.map((action, idx) => (
@@ -572,7 +584,7 @@ export default function FolderPage() {
                           <div className="mt-5 pt-4 border-t border-border">
                             <h4 className="text-xs font-bold text-foreground mb-3 flex items-center gap-2 uppercase tracking-wider">
                               <Sparkles className="w-3.5 h-3.5" />
-                              Evaluator Score
+                              Enterprise Evaluator Score (LLM-as-a-Judge)
                             </h4>
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">

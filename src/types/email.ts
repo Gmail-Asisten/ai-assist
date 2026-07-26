@@ -167,6 +167,7 @@ export interface DraftReplies {
   inReplyTo: string; // original email subject
   drafts: DraftReply[];
   quickActions: QuickAction[];
+  handledByDivision?: string;
 }
 
 export interface DraftReply {

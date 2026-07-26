@@ -52,11 +52,11 @@ export async function generateJSON<T>(options: {
   maxTokens?: number;
 }): Promise<T> {
   const {
-    model: modelName = "gemini-3.5-flash",
+    model: modelName = "gemini-1.5-flash",
     systemPrompt,
     userPrompt,
     temperature = 0.1,
-    maxTokens = 4096,
+    maxTokens = 8192,
   } = options;
 
   const model = genAI.getGenerativeModel({
@@ -102,12 +102,13 @@ export async function generateText(options: {
   maxTokens?: number;
 }): Promise<string> {
   const {
-    model: modelName = "gemini-3.5-flash",
+    model: modelName = "gemini-1.5-flash",
     systemPrompt,
     userPrompt,
     temperature = 0.7,
-    maxTokens = 4096,
+    maxTokens = 8192,
   } = options;
+
 
   const model = genAI.getGenerativeModel({
     model: modelName,
