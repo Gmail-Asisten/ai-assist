@@ -3,12 +3,14 @@
 // ============================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // ─── Users ────────────────────────────────────────────────────
@@ -155,4 +157,17 @@ model AgentLog {
   @@index([agentName, status])
   @@index([createdAt])
   @@map("agent_logs")
+}
+
+// ─── Company Knowledge (RAG) ─────────────────────────────────
+
+model CompanyKnowledge {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  division  String   // 'CS', 'Logistik', 'Finance'
+  embedding Unsupported("vector(768)")?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("company_knowledge")
 }

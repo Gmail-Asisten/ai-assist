@@ -5,37 +5,19 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeEmail } from "@/agents/inbox-analyzer";
-import { generateReplies, regenerateWithTone } from "@/agents/smart-replier";
+import { handleDivisionEmail } from "@/agents/division-agents";
+import { evaluateDraft } from "@/agents/evaluator";
 import { createGmailClient, fetchEmail } from "@/lib/gmail";
 import type { ApiResponse, DraftReplies, DraftReply, ReplyTone } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const {
-      emailId,
-      accessToken,
-      tone,
-      customInstructions,
-      numberOfDrafts = 3,
-      regenerateTone,
-    } = body as {
-      emailId: string;
-      accessToken: string;
-      tone?: ReplyTone;
-      customInstructions?: string;
-      numberOfDrafts?: number;
-      regenerateTone?: ReplyTone; // if set, regenerate single draft with this tone
-    };
+    const { emailId, accessToken } = body as { emailId: string; accessToken: string };
 
     if (!emailId || !accessToken) {
       return NextResponse.json<ApiResponse>(
-        {
-          success: false,
-          data: null,
-          error: "emailId and accessToken are required",
-          timestamp: new Date().toISOString(),
-        },
+        { success: false, data: null, error: "emailId and accessToken are required", timestamp: new Date().toISOString() },
         { status: 400 }
       );
     }
@@ -45,49 +27,48 @@ export async function POST(request: NextRequest) {
 
     if (!rawEmail) {
       return NextResponse.json<ApiResponse>(
-        {
-          success: false,
-          data: null,
-          error: `Email ${emailId} not found`,
-          timestamp: new Date().toISOString(),
-        },
+        { success: false, data: null, error: `Email ${emailId} not found`, timestamp: new Date().toISOString() },
         { status: 404 }
       );
     }
 
     const analyzed = await analyzeEmail(rawEmail);
 
-    // Single tone regeneration
-    if (regenerateTone) {
-      const draft = await regenerateWithTone(analyzed, regenerateTone);
-      return NextResponse.json<ApiResponse<DraftReply>>({
-        success: true,
-        data: draft,
-        timestamp: new Date().toISOString(),
-      });
+    // Simple routing logic based on text
+    let division: "CS" | "Logistik" | "Finance" = "CS";
+    const text = (analyzed.rawEmail.snippet + " " + analyzed.subject).toLowerCase();
+    if (text.includes("kirim") || text.includes("resi") || text.includes("kurir") || text.includes("lambat")) {
+      division = "Logistik";
+    } else if (text.includes("refund") || text.includes("bayar") || text.includes("uang") || text.includes("tagih")) {
+      division = "Finance";
     }
 
-    // Full draft generation
-    const drafts = await generateReplies(analyzed, {
-      preferredTone: tone,
-      customInstructions,
-      numberOfDrafts,
-    });
+    const { draft, contextText } = await handleDivisionEmail(analyzed, division);
+    const evaluation = await evaluateDraft(analyzed, draft, contextText);
+
+    const draftReplies: DraftReplies = {
+      drafts: [
+        {
+          body: draft,
+          tone: "formal",
+          // @ts-ignore
+          evaluation,
+        }
+      ],
+      quickActions: [],
+      suggestedTones: ["formal"],
+      isAutoReplySafe: !evaluation.hallucination_detected && evaluation.accuracy > 80,
+    };
 
     return NextResponse.json<ApiResponse<DraftReplies>>({
       success: true,
-      data: drafts,
+      data: draftReplies,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error("[API /agents/reply] Error:", error);
     return NextResponse.json<ApiResponse>(
-      {
-        success: false,
-        data: null,
-        error: error instanceof Error ? error.message : "Internal server error",
-        timestamp: new Date().toISOString(),
-      },
+      { success: false, data: null, error: error instanceof Error ? error.message : "Internal server error", timestamp: new Date().toISOString() },
       { status: 500 }
     );
   }

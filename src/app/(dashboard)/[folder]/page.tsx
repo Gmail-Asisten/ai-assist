@@ -566,6 +566,49 @@ export default function FolderPage() {
                         <p className="whitespace-pre-wrap text-sm text-foreground/70 leading-relaxed">
                           {draft.body}
                         </p>
+                        
+                        {/* EVALUATOR UI */}
+                        {(draft as any).evaluation && (
+                          <div className="mt-5 pt-4 border-t border-border">
+                            <h4 className="text-xs font-bold text-foreground mb-3 flex items-center gap-2 uppercase tracking-wider">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Evaluator Score
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                                <span className="text-xs text-muted-foreground">Accuracy</span>
+                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.accuracy}%</span>
+                              </div>
+                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                                <span className="text-xs text-muted-foreground">Effectiveness</span>
+                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.effectiveness}%</span>
+                              </div>
+                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                                <span className="text-xs text-muted-foreground">Efficiency</span>
+                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.efficiency}%</span>
+                              </div>
+                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                                <span className="text-xs text-muted-foreground">Explainability</span>
+                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.explainability}%</span>
+                              </div>
+                            </div>
+                            {(draft as any).evaluation.hallucination_detected ? (
+                               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600">
+                                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                 <div className="text-xs">
+                                   <strong>Hallucination Detected:</strong> {(draft as any).evaluation.feedback || "Agent might be hallucinating facts."}
+                                 </div>
+                               </div>
+                            ) : (
+                               <div className="flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600">
+                                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                                 <div className="text-xs leading-relaxed">
+                                   <strong>Safe:</strong> No hallucination detected. {(draft as any).evaluation.feedback}
+                                 </div>
+                               </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

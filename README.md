@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mail Assistant - Enterprise Multi-Agent System
 
-## Getting Started
+Proyek ini telah dikembangkan menjadi arsitektur **Enterprise Multi-Agent** yang dirancang khusus untuk memilah, menganalisis, dan membalas email masuk pelanggan perusahaan secara otomatis menggunakan teknologi **Retrieval-Augmented Generation (RAG)**.
 
-First, run the development server:
+## 🏆 Kriteria Pemenuhan Tugas (ST167)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Proyek ini secara ketat merespons seluruh kebutuhan *rubrik* tugas:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. **Studi Kasus Enterprise & Masalah Antar Divisi (ST167.CPMK08.2 - 10 Poin)**
+   - **Masalah:** Email pelanggan (_inbox_) perusahaan sering tercampur antara komplain pengiriman, permintaan _refund_ uang, dan informasi layanan umum, sehingga lambat ditangani jika hanya menggunakan satu staf CS.
+   - **Solusi:** Sistem _routing_ yang secara cerdas mendeteksi konteks email dan mendistribusikannya ke masing-masing perwakilan (agen) divisi.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. **Model Multi-Agent yang Saling Berinteraksi (ST167.CPMK22.6 - 10 Poin)**
+   - Sistem ini diorkestrasikan agar agen-agen independen dapat berkomunikasi dalam satu _pipeline_ tugas: 
+     `Inbox Analyzer` ➔ `Priority Classifier` ➔ `Division Agent (CS/Logistics/Finance)` ➔ `Evaluator Agent`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. **Pendekatan RAG, Embedding, dan Vector DB (ST167.CPMK22.5, CPMK22.7 - 60 Poin)**
+   - **Model:** Menggunakan **Google Gemini 1.5 Flash** untuk penalaran dan `text-embedding-004` untuk mengubah teks menjadi *embeddings*.
+   - **Vector Database:** Menggunakan PostgreSQL yang di-*upgrade* dengan ekstensi `pgvector`.
+   - **RAG Pipeline:** Setiap kali Agen Divisi menerima tiket email, ia tidak menjawab menggunakan pengetahuannya sendiri (menghindari bias/halusinasi), melainkan mencari SOP internal spesifik dari Vector DB (menggunakan *Cosine Similarity*) sebagai panduan utama/contekan untuk membalas pelanggan.
 
-## Learn More
+4. **Evaluator Model pada Multi-Agent (ST167.CPMK22.6 - 20 Poin)**
+   - **LLM-as-a-Judge:** Di akhir alur pemrosesan, sebuah `Evaluator Agent` diterjunkan khusus untuk memeriksa draf balasan yang dibuat oleh Agen Divisi.
+   - Agen ini akan menilai persentase dari: **Accuracy, Effectiveness, Efficiency, dan Explainability**. 
+   - **Keamanan (Hallucination):** Evaluator akan mendeteksi apakah Agen Divisi berhalusinasi (misalnya: menjanjikan uang kompensasi kepada pelanggan di luar kebijakan SOP yang ada di *database*).
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🚀 Fitur Utama
+- **Semantic Vector Search:** Pencarian dokumen SOP perusahaan secepat kilat menggunakan *pgvector*.
+- **Smart Division Routing:** Email terpisah secara spesifik (Logistik, Finance, CS Umum).
+- **Evaluator Dashboard UI:** Tampilan skor evaluasi performa AI secara _real-time_ di dalam UI setiap email.
+- **Smart Replies & Actions:** Klik 1 tombol untuk langsung mengirim draf balasan yang sudah dipilah dan dipastikan aman oleh sistem Evaluator.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🛠 Teknologi yang Digunakan
+- **Frontend / Backend:** Next.js (App Router), React, TailwindCSS
+- **Database:** PostgreSQL + Prisma ORM + pgvector (Ekstensi Vektor)
+- **AI Models:** `@google/generative-ai` (Gemini SDK)
+- **Authentication:** NextAuth (Google Provider)
+- **Deployment:** NGINX, PM2 (Ubuntu VPS)
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔧 Setup Instalasai (Lokal)
+1. Klon *repository* ini.
+2. Jalankan `npm install`.
+3. Siapkan *file* `.env.local` dan masukkan:
+   - `DATABASE_URL` (database Postgres wajib mendukung ekstensi *vector*).
+   - `GEMINI_API_KEY`
+   - Kredensial `GOOGLE_CLIENT_ID` dan rahasia *OAuth* lainnya.
+4. Jalankan `npx prisma db push` untuk inisialisasi skema dan *pgvector*.
+5. Jalankan `npm run dev`.

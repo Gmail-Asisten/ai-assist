@@ -12,8 +12,9 @@ export { classifyEmail, getPriorityDisplay } from "./priority-classifier";
 // Agent 3: Summary Generator
 export { summarizeEmail, summarizeThread } from "./summary-generator";
 
-// Agent 4: Smart Replier
-export { generateReplies, regenerateWithTone } from "./smart-replier";
+// Agent 4: Division Agents & Evaluator
+export { handleDivisionEmail } from "./division-agents";
+export { evaluateDraft } from "./evaluator";
 
 // Agent 5: Reminder Scheduler
 export {

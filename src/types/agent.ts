@@ -20,7 +20,10 @@ export type AgentName =
   | "inbox-analyzer"
   | "priority-classifier"
   | "summary-generator"
-  | "smart-replier"
+  | "division-cs"
+  | "division-logistics"
+  | "division-finance"
+  | "evaluator"
   | "reminder-scheduler";
 
 export type AgentStatus =
@@ -46,7 +49,7 @@ export interface AgentState {
 export interface AgentConfig {
   maxRetries: number;
   timeoutMs: number;
-  model: string; // "gemini-2.5-pro" etc
+  model: string; // "gemini-3.5-flash" etc
   temperature: number;
   maxTokens: number;
 }
@@ -55,35 +58,56 @@ export const DEFAULT_AGENT_CONFIGS: Record<AgentName, AgentConfig> = {
   "inbox-analyzer": {
     maxRetries: 2,
     timeoutMs: 15000,
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     temperature: 0.1,
     maxTokens: 2048,
   },
   "priority-classifier": {
     maxRetries: 2,
     timeoutMs: 10000,
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     temperature: 0.0,
     maxTokens: 1024,
   },
   "summary-generator": {
     maxRetries: 2,
     timeoutMs: 20000,
-    model: "gemini-2.5-pro",
+    model: "gemini-3.5-flash",
     temperature: 0.3,
     maxTokens: 4096,
   },
-  "smart-replier": {
+  "division-cs": {
     maxRetries: 2,
     timeoutMs: 20000,
-    model: "gemini-2.5-pro",
+    model: "gemini-3.5-flash",
     temperature: 0.7,
     maxTokens: 4096,
+  },
+  "division-logistics": {
+    maxRetries: 2,
+    timeoutMs: 20000,
+    model: "gemini-3.5-flash",
+    temperature: 0.5,
+    maxTokens: 4096,
+  },
+  "division-finance": {
+    maxRetries: 2,
+    timeoutMs: 20000,
+    model: "gemini-3.5-flash",
+    temperature: 0.2,
+    maxTokens: 4096,
+  },
+  "evaluator": {
+    maxRetries: 1,
+    timeoutMs: 15000,
+    model: "gemini-3.5-flash",
+    temperature: 0.0,
+    maxTokens: 1024,
   },
   "reminder-scheduler": {
     maxRetries: 1,
     timeoutMs: 10000,
-    model: "gemini-2.5-flash",
+    model: "gemini-3.5-flash",
     temperature: 0.0,
     maxTokens: 1024,
   },

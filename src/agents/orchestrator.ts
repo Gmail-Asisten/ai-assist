@@ -12,8 +12,9 @@
 import { analyzeEmail } from "./inbox-analyzer";
 import { classifyEmail } from "./priority-classifier";
 import { summarizeEmail, summarizeThread } from "./summary-generator";
-import { generateReplies } from "./smart-replier";
 import { scheduleReminders } from "./reminder-scheduler";
+import { handleDivisionEmail } from "./division-agents";
+import { evaluateDraft } from "./evaluator";
 import { fetchThread, createGmailClient } from "@/lib/gmail";
 import { now, withRetry, measureTime } from "@/lib/utils";
 import type { UserPreferences } from "@/types/agent";
@@ -149,27 +150,48 @@ export async function processEmail(
     );
   }
 
-  // Agent 4: Smart Replier
+  // Agent 4: Division Agent & Evaluator
   if (classified.routing.shouldDraftReply && !skipAgents.includes("reply")) {
     parallelTasks.push(
       (async () => {
         try {
-          draftReplies = await withRetry(
-            () =>
-              generateReplies(analyzed, {
-                preferredTone: userPreferences?.defaultReplyTone,
-                userPreferences,
-              }),
-            { maxRetries: 1 }
-          );
+          // Route to division based on content
+          let division: "CS" | "Logistik" | "Finance" = "CS";
+          const text = (analyzed.rawEmail.snippet + " " + analyzed.subject).toLowerCase();
+          if (text.includes("kirim") || text.includes("resi") || text.includes("kurir") || text.includes("lambat")) {
+            division = "Logistik";
+          } else if (text.includes("refund") || text.includes("bayar") || text.includes("uang") || text.includes("tagih")) {
+            division = "Finance";
+          }
+
+          console.log(`[Orchestrator] Routing to ${division} Agent...`);
+          
+          const { draft, usedKnowledge, contextText } = await handleDivisionEmail(analyzed, division);
+          
+          console.log(`[Orchestrator] Evaluating draft from ${division} Agent...`);
+          const evaluation = await evaluateDraft(analyzed, draft, contextText);
+
+          draftReplies = {
+            drafts: [
+              {
+                body: draft,
+                tone: "formal",
+                // @ts-ignore
+                evaluation,
+              }
+            ],
+            suggestedTones: ["formal"],
+            isAutoReplySafe: !evaluation.hallucination_detected && evaluation.accuracy > 80,
+          };
+          
           console.log(
-            `[Orchestrator] ✅ Agent 4 (Replier) completed: ${draftReplies.drafts.length} drafts`
+            `[Orchestrator] ✅ Agent 4 (Division & Evaluator) completed.`
           );
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          console.error(`[Orchestrator] ❌ Agent 4 (Replier) failed:`, errMsg);
+          console.error(`[Orchestrator] ❌ Agent 4 (Division) failed:`, errMsg);
           errors.push({
-            agent: "smart-replier",
+            agent: "division-agent",
             error: errMsg,
             timestamp: now(),
           });
