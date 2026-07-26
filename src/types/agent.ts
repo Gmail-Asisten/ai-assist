@@ -49,7 +49,7 @@ export interface AgentState {
 export interface AgentConfig {
   maxRetries: number;
   timeoutMs: number;
-  model: string; // "gemini-3.5-flash" etc
+  model: string; // "gemini-1.5-flash" etc
   temperature: number;
   maxTokens: number;
 }
