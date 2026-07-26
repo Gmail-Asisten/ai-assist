@@ -170,6 +170,15 @@ export default function FolderPage() {
     setChatMessage("");
     setIsChatLoading(true);
 
+    // Prepare global inbox context
+    const globalInboxContext = emails.map((e) => ({
+      id: e.emailId,
+      from: e.analysis?.rawEmail?.from,
+      subject: e.analysis?.rawEmail?.subject,
+      snippet: e.analysis?.rawEmail?.snippet,
+      priority: e.classification?.priorityLabel || "unclassified",
+    }));
+
     try {
       const res = await fetch("/api/agents/chat", {
         method: "POST",
@@ -177,6 +186,7 @@ export default function FolderPage() {
         body: JSON.stringify({
           chatHistory: updatedHistory,
           emailContext: selectedEmail,
+          globalInboxContext,
           prompt: newMessage.content,
           accessToken,
         }),

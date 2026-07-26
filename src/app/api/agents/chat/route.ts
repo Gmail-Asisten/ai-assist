@@ -5,7 +5,7 @@ import type { ApiResponse } from "@/types";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { chatHistory, emailContext, prompt, accessToken } = body;
+    const { chatHistory, emailContext, globalInboxContext, prompt, accessToken } = body;
 
     if (!prompt || !emailContext) {
       return NextResponse.json<ApiResponse>(
@@ -15,8 +15,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Build the system instructions using the email context
+    const globalContextString = globalInboxContext && globalInboxContext.length > 0 
+      ? `\n\n--- GLOBAL INBOX CONTEXT ---\nYou also have access to the user's entire loaded inbox list:\n${globalInboxContext.map((e: any, i: number) => `${i+1}. From: ${e.from} | Subject: ${e.subject} | Priority: ${e.priority} | Snippet: ${e.snippet}`).join("\n")}`
+      : "";
+
     const systemPrompt = `You are a helpful AI assistant inside an email inbox application.
-You are helping the user with the following email:
+You are helping the user with the following SPECIFIC email that they currently have open:
 From: ${emailContext.from}
 To: ${emailContext.to}
 Date: ${emailContext.date}
@@ -24,8 +28,9 @@ Subject: ${emailContext.subject}
 
 Email Body:
 ${emailContext.bodyPlain || "No plain text body available."}
+${globalContextString}
 
-Respond to the user's queries based on this email context. Be concise and helpful.`;
+Respond to the user's queries based on the email context. If the user asks about the overall inbox, summarize or analyze the GLOBAL INBOX CONTEXT. Otherwise, focus on the specific email. Be concise and helpful.`;
 
     // Format history into the user prompt
     const formattedHistoryText = chatHistory
