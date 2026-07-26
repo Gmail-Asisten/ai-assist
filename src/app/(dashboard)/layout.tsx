@@ -3,7 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, Star, Send, Trash2, Settings, Sparkles } from "lucide-react";
+import { Inbox, Star, Send, Trash2, Settings, Sparkles, LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 
 const NAV_ITEMS = [
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: 3 },
@@ -76,10 +77,17 @@ export default function DashboardLayout({
         </nav>
 
         {/* Bottom */}
-        <div className="px-3 pb-4">
+        <div className="px-3 pb-4 space-y-1">
           <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200 border-none bg-transparent cursor-pointer">
             <Settings className="w-[18px] h-[18px]" />
             Settings
+          </button>
+          <button 
+            onClick={() => signOut({ callbackUrl: '/' })}
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50/10 transition-all duration-200 border-none bg-transparent cursor-pointer"
+          >
+            <LogOut className="w-[18px] h-[18px]" />
+            Logout
           </button>
         </div>
       </aside>
