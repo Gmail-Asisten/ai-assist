@@ -7,9 +7,9 @@ import { Inbox, Star, Send, Trash2, Settings, Sparkles } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: 3 },
-  { href: "#", label: "Starred", icon: Star },
-  { href: "#", label: "Sent", icon: Send },
-  { href: "#", label: "Trash", icon: Trash2 },
+  { href: "/starred", label: "Starred", icon: Star },
+  { href: "/sent", label: "Sent", icon: Send },
+  { href: "/trash", label: "Trash", icon: Trash2 },
 ];
 
 export default function DashboardLayout({

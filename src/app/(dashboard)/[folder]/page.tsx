@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { MOCK_RAW_EMAILS, MOCK_PIPELINE_RESULTS } from "@/lib/mock-data";
+import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
+import type { PipelineResult, RawEmail } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -16,36 +17,140 @@ import {
   MessageSquare,
   X,
   ArrowUpRight,
+  RefreshCw,
 } from "lucide-react";
 
-export default function InboxPage() {
-  const [selectedEmailId, setSelectedEmailId] = useState<string>(MOCK_RAW_EMAILS[0].id);
+import { useParams } from "next/navigation";
+
+export default function FolderPage() {
+  const params = useParams();
+  const folder = (params?.folder as string) || "inbox";
+  
+  // Format folder for UI display
+  const folderTitle = folder.charAt(0).toUpperCase() + folder.slice(1);
+  
+  // Map folder name to Gmail Label ID
+  const labelIds = [folder.toUpperCase()];
+  const { data: session } = useSession();
+  const accessToken = (session as any)?.accessToken;
+  const userId = session?.user?.id;
+
+  const [emails, setEmails] = useState<PipelineResult[]>([]);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [chatMessage, setChatMessage] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatHistory, setChatHistory] = useState([
     { role: "ai", content: "Hi! I'm your AI assistant. Ask me anything about this email or your inbox." },
   ]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
-  const selectedEmail = MOCK_RAW_EMAILS.find((e) => e.id === selectedEmailId);
-  const aiData = selectedEmailId ? MOCK_PIPELINE_RESULTS[selectedEmailId] : null;
+  const selectedData = emails.find((e) => e.emailId === selectedEmailId);
+  const selectedEmail = selectedData?.analysis?.rawEmail;
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const fetchEmails = useCallback(async (isBackground = false) => {
+    if (!accessToken) return;
+    if (!isBackground) setIsLoading(true);
+    setIsSyncing(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/gmail/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          userId: userId || "anonymous",
+          maxResults: 15,
+          labelIds,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setEmails(data.data.processed);
+        if (!selectedEmailId && data.data.processed.length > 0) {
+          setSelectedEmailId(data.data.processed[0].emailId);
+        }
+      } else {
+        setError(data.error || "Failed to fetch emails");
+      }
+    } catch (err: any) {
+      setError(err.message || "An error occurred while fetching emails");
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
+    }
+  }, [accessToken, userId, selectedEmailId, folder]);
+
+  // Initial fetch and polling
+  useEffect(() => {
+    // Reset state when folder changes
+    setEmails([]);
+    setSelectedEmailId(null);
+    
+    if (accessToken) {
+      fetchEmails();
+      // Poll every 30 seconds for new emails
+      const interval = setInterval(() => {
+        fetchEmails(true);
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [accessToken, fetchEmails, folder]);
+
+  // Reset chat when selecting a new email
+  useEffect(() => {
+    setChatHistory([
+      { role: "ai", content: "Hi! I'm your AI assistant. Ask me anything about this email or your inbox." },
+    ]);
+  }, [selectedEmailId]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatMessage.trim()) return;
+    if (!chatMessage.trim() || !selectedEmail) return;
 
-    setChatHistory([...chatHistory, { role: "user", content: chatMessage }]);
+    const newMessage = { role: "user", content: chatMessage };
+    const updatedHistory = [...chatHistory, newMessage];
+    setChatHistory(updatedHistory);
     setChatMessage("");
+    setIsChatLoading(true);
 
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/agents/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatHistory: updatedHistory,
+          emailContext: selectedEmail,
+          prompt: newMessage.content,
+          accessToken,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setChatHistory((prev) => [
+          ...prev,
+          { role: "ai", content: data.data.response },
+        ]);
+      } else {
+        setChatHistory((prev) => [
+          ...prev,
+          { role: "ai", content: "Sorry, I encountered an error: " + data.error },
+        ]);
+      }
+    } catch (err) {
       setChatHistory((prev) => [
         ...prev,
-        {
-          role: "ai",
-          content:
-            "I'm analyzing that for you... (This is a mock response, real Gemini integration coming soon!)",
-        },
+        { role: "ai", content: "Sorry, I couldn't connect to the server." },
       ]);
-    }, 1000);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const getPriorityColor = (label?: string) => {
@@ -79,11 +184,20 @@ export default function InboxPage() {
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-foreground tracking-tight font-display">
-              Inbox
+              {folderTitle}
             </h2>
-            <span className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-              {MOCK_RAW_EMAILS.length} emails
-            </span>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => fetchEmails(false)}
+                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors"
+                disabled={isSyncing}
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+              </button>
+              <span className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
+                {emails.length} emails
+              </span>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -97,119 +211,127 @@ export default function InboxPage() {
 
         {/* Email Items */}
         <div className="overflow-y-auto flex-1">
-          {MOCK_RAW_EMAILS.map((email) => {
-            const isSelected = selectedEmailId === email.id;
-            const priorityLabel =
-              MOCK_PIPELINE_RESULTS[email.id]?.classification?.priorityLabel;
-            const isUrgent = priorityLabel === "urgent";
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+              <p className="text-sm">Loading emails...</p>
+            </div>
+          ) : error ? (
+            <div className="p-5 text-center text-red-500 text-sm">{error}</div>
+          ) : emails.length === 0 ? (
+            <div className="p-5 text-center text-muted-foreground text-sm">No emails found.</div>
+          ) : (
+            emails.map((pipelineData) => {
+              const email = pipelineData.analysis.rawEmail;
+              const isSelected = selectedEmailId === email.id;
+              const priorityLabel = pipelineData.classification?.priorityLabel;
+              const isUrgent = priorityLabel === "urgent";
 
-            return (
-              <motion.div
-                key={email.id}
-                onClick={() => setSelectedEmailId(email.id)}
-                whileTap={{ scale: 0.99 }}
-                className={`
-                  relative px-5 py-4 cursor-pointer transition-all duration-200 border-b border-border/50
-                  ${isSelected
-                    ? "bg-accent"
-                    : "hover:bg-muted/50"
-                  }
-                `}
-              >
-                {/* Selection indicator */}
-                {isSelected && (
-                  <motion.div
-                    layoutId="email-indicator"
-                    className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full bg-foreground"
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  />
-                )}
+              return (
+                <motion.div
+                  key={email.id}
+                  onClick={() => setSelectedEmailId(email.id)}
+                  whileTap={{ scale: 0.99 }}
+                  className={`
+                    relative px-5 py-4 cursor-pointer transition-all duration-200 border-b border-border/50
+                    ${isSelected
+                      ? "bg-accent"
+                      : "hover:bg-muted/50"
+                    }
+                  `}
+                >
+                  {isSelected && (
+                    <motion.div
+                      layoutId="email-indicator"
+                      className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full bg-foreground"
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
 
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div
-                    className={`
-                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5
-                      ${isSelected
-                        ? "bg-foreground text-background"
-                        : "bg-muted text-muted-foreground"
-                      }
-                    `}
-                  >
-                    {email.fromName.charAt(0)}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span
-                        className={`text-sm font-semibold truncate pr-2 ${
-                          !email.isRead ? "text-foreground" : "text-muted-foreground"
-                        }`}
-                      >
-                        {email.fromName.split("(")[0].trim()}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
-                        {formatTime(email.date)}
-                      </span>
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`
+                        w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5
+                        ${isSelected
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground"
+                        }
+                      `}
+                    >
+                      {email.fromName ? email.fromName.charAt(0) : email.from.charAt(0)}
                     </div>
 
-                    <div className="flex items-center gap-2 mb-1">
-                      {isUrgent && (
-                        <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
-                      )}
-                      <span
-                        className={`text-[13px] truncate ${
-                          !email.isRead
-                            ? "font-semibold text-foreground"
-                            : "font-medium text-muted-foreground"
-                        }`}
-                      >
-                        {email.subject}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground/70 line-clamp-1 leading-relaxed">
-                      {email.snippet}
-                    </p>
-
-                    {/* Tags */}
-                    <div className="flex items-center gap-2 mt-2">
-                      {priorityLabel && (
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
                         <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white ${getPriorityColor(
-                            priorityLabel
-                          )}`}
+                          className={`text-sm font-semibold truncate pr-2 ${
+                            !email.isRead ? "text-foreground" : "text-muted-foreground"
+                          }`}
                         >
-                          {priorityLabel}
+                          {(email.fromName || email.from).split("(")[0].trim()}
                         </span>
-                      )}
-                      {email.attachments.length > 0 && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                          <Paperclip className="w-3 h-3" />
-                          {email.attachments.length}
+                        <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
+                          {formatTime(email.date)}
                         </span>
-                      )}
-                      {email.isThread && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                          <MessageSquare className="w-3 h-3" />
-                          {email.threadLength}
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-1">
+                        {isUrgent && (
+                          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                        )}
+                        <span
+                          className={`text-[13px] truncate ${
+                            !email.isRead
+                              ? "font-semibold text-foreground"
+                              : "font-medium text-muted-foreground"
+                          }`}
+                        >
+                          {email.subject}
                         </span>
-                      )}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground/70 line-clamp-1 leading-relaxed">
+                        {email.snippet}
+                      </p>
+
+                      <div className="flex items-center gap-2 mt-2">
+                        {priorityLabel && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white ${getPriorityColor(
+                              priorityLabel
+                            )}`}
+                          >
+                            {priorityLabel}
+                          </span>
+                        )}
+                        {email.attachments && email.attachments.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                            <Paperclip className="w-3 h-3" />
+                            {email.attachments.length}
+                          </span>
+                        )}
+                        {email.isThread && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                            <MessageSquare className="w-3 h-3" />
+                            {email.threadLength}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            );
-          })}
+                </motion.div>
+              );
+            })
+          )}
         </div>
       </div>
 
       {/* ─── Email Detail ─── */}
       <div className="flex-1 flex flex-col overflow-y-auto bg-background">
         <AnimatePresence mode="wait">
-          {selectedEmail ? (
+          {selectedData && selectedEmail ? (
             <motion.div
-              key={selectedEmailId}
+              key={selectedEmail.id}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
@@ -217,14 +339,13 @@ export default function InboxPage() {
               className="max-w-3xl mx-auto w-full px-8 py-8 pb-16"
             >
               {/* AI Summary Panel */}
-              {aiData && (
+              {selectedData.summary && (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                   className="relative rounded-2xl border border-border bg-muted/30 p-6 mb-8 overflow-hidden"
                 >
-                  {/* Subtle accent border */}
                   <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-foreground/20" />
 
                   <div className="flex justify-between items-start mb-4">
@@ -232,7 +353,7 @@ export default function InboxPage() {
                       <Sparkles className="w-4 h-4" />
                       AI Analysis
                     </h3>
-                    {aiData.classification?.priorityLabel === "urgent" && (
+                    {selectedData.classification?.priorityLabel === "urgent" && (
                       <span className="flex items-center gap-1.5 bg-red-500/10 text-red-600 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border border-red-500/20">
                         <AlertTriangle className="w-3.5 h-3.5" />
                         Urgent
@@ -241,11 +362,11 @@ export default function InboxPage() {
                   </div>
 
                   <p className="text-base font-medium text-foreground mb-4 leading-relaxed">
-                    {aiData.summary?.summary.oneLiner}
+                    {selectedData.summary.summary.oneLiner}
                   </p>
 
                   <ul className="space-y-2 mb-5">
-                    {aiData.summary?.summary.detailed.map((point, idx) => (
+                    {selectedData.summary.summary.detailed.map((point, idx) => (
                       <li
                         key={idx}
                         className="flex items-start gap-3 text-muted-foreground text-sm"
@@ -256,14 +377,14 @@ export default function InboxPage() {
                     ))}
                   </ul>
 
-                  {aiData.summary?.actionItems &&
-                    aiData.summary.actionItems.length > 0 && (
+                  {selectedData.summary.actionItems &&
+                    selectedData.summary.actionItems.length > 0 && (
                       <div className="pt-4 border-t border-border">
                         <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
                           Action Items
                         </h4>
                         <div className="space-y-2.5">
-                          {aiData.summary.actionItems.map((item, idx) => (
+                          {selectedData.summary.actionItems.map((item, idx) => (
                             <label
                               key={idx}
                               className="flex items-start gap-3 group cursor-pointer"
@@ -298,11 +419,11 @@ export default function InboxPage() {
                 </h1>
                 <div className="flex items-center gap-4">
                   <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground">
-                    {selectedEmail.fromName.charAt(0)}
+                    {selectedEmail.fromName ? selectedEmail.fromName.charAt(0) : selectedEmail.from.charAt(0)}
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-foreground">
-                      {selectedEmail.fromName}
+                      {selectedEmail.fromName || selectedEmail.from}
                       <span className="font-normal text-muted-foreground ml-2 text-xs">
                         &lt;{selectedEmail.from}&gt;
                       </span>
@@ -323,12 +444,12 @@ export default function InboxPage() {
 
               {/* Email Body */}
               <div
-                className="rounded-xl border border-border bg-card p-8 mb-10 text-foreground/80 leading-relaxed text-[15px] prose-p:mb-4 prose-strong:text-foreground"
-                dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml }}
+                className="rounded-xl border border-border bg-card p-8 mb-10 text-foreground/80 leading-relaxed text-[15px] prose-p:mb-4 prose-strong:text-foreground overflow-x-hidden break-words"
+                dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml || selectedEmail.bodyText }}
               />
 
               {/* AI Draft Replies */}
-              {aiData?.draftReplies?.drafts && (
+              {selectedData.draftReplies?.drafts && (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -339,9 +460,8 @@ export default function InboxPage() {
                     Smart Replies
                   </h3>
 
-                  {/* Quick Actions */}
                   <div className="flex flex-wrap gap-2 mb-5">
-                    {aiData.draftReplies.quickActions.map((action, idx) => (
+                    {selectedData.draftReplies.quickActions.map((action, idx) => (
                       <button
                         key={idx}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-muted border border-border text-sm font-medium text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200 cursor-pointer"
@@ -352,9 +472,8 @@ export default function InboxPage() {
                     ))}
                   </div>
 
-                  {/* Draft Cards */}
                   <div className="space-y-4">
-                    {aiData.draftReplies.drafts.map((draft, idx) => (
+                    {selectedData.draftReplies.drafts.map((draft, idx) => (
                       <div
                         key={idx}
                         className="group rounded-xl border border-border bg-card p-5 hover:border-foreground/20 transition-all duration-200 relative"
@@ -388,7 +507,9 @@ export default function InboxPage() {
               className="h-full flex items-center justify-center text-muted-foreground flex-col gap-3"
             >
               <Sparkles className="w-10 h-10 text-muted-foreground/30" />
-              <p className="text-sm">Select an email to view AI analysis</p>
+              <p className="text-sm">
+                {isLoading ? "Fetching your latest emails..." : "Select an email to view AI analysis"}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -448,6 +569,19 @@ export default function InboxPage() {
                   </div>
                 </motion.div>
               ))}
+              {isChatLoading && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex justify-start"
+                >
+                  <div className="bg-muted text-foreground rounded-2xl rounded-bl-md border border-border px-4 py-3 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce"></span>
+                  </div>
+                </motion.div>
+              )}
             </div>
 
             {/* Chat Input */}
@@ -460,12 +594,13 @@ export default function InboxPage() {
                   type="text"
                   value={chatMessage}
                   onChange={(e) => setChatMessage(e.target.value)}
-                  placeholder="Ask a question..."
-                  className="w-full pl-4 pr-11 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
+                  placeholder={selectedEmail ? "Ask a question..." : "Select an email first"}
+                  disabled={!selectedEmail || isChatLoading}
+                  className="w-full pl-4 pr-11 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={!chatMessage.trim()}
+                  disabled={!chatMessage.trim() || !selectedEmail || isChatLoading}
                   className="absolute right-2 w-7 h-7 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 hover:bg-foreground/80 transition-all cursor-pointer border-none"
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -476,7 +611,6 @@ export default function InboxPage() {
         )}
       </AnimatePresence>
 
-      {/* Chat Toggle (when closed) */}
       {!isChatOpen && (
         <motion.button
           initial={{ opacity: 0, scale: 0.8 }}

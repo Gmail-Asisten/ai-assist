@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       pageToken,
       query,
       processEmails = true, // Set to false to only fetch, not process
+      labelIds = ["INBOX"],
     } = body as {
       accessToken: string;
       userId: string;
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
       pageToken?: string;
       query?: string;
       processEmails?: boolean;
+      labelIds?: string[];
     };
 
     if (!accessToken) {
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       maxResults,
       pageToken,
       query,
+      labelIds,
     });
 
     if (!processEmails) {
