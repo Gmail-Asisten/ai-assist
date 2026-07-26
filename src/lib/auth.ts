@@ -23,7 +23,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       authorization: {
         params: {
-          prompt: "consent",
           access_type: "offline",
           response_type: "code",
           scope: GMAIL_SCOPES,
