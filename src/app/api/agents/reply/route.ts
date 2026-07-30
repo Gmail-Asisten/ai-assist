@@ -1,14 +1,15 @@
 // ============================================================
-// API: Generate Reply — Agent 4 standalone endpoint
+// API: Generate Reply — Standalone reply endpoint
 // POST /api/agents/reply
+//
+// Generates a contextual reply draft using Gemini directly,
+// NOT the division agent pipeline (which is for enterprise CS).
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeEmail } from "@/agents/inbox-analyzer";
-import { handleDivisionEmail } from "@/agents/division-agents";
-import { evaluateDraft } from "@/agents/evaluator";
+import { generateText } from "@/lib/gemini";
 import { createGmailClient, fetchEmail } from "@/lib/gmail";
-import type { ApiResponse, DraftReplies, DraftReply, ReplyTone } from "@/types";
+import type { ApiResponse, DraftReplies } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,32 +33,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const analyzed = await analyzeEmail(rawEmail);
+    // Extract email context
+    const sender = rawEmail.fromName || rawEmail.from || "pengirim";
+    const subject = rawEmail.subject || "(tanpa subjek)";
+    const emailBody = rawEmail.bodyText || rawEmail.snippet || "";
 
-    // Simple routing logic based on text
-    let division: "CS" | "Logistik" | "Finance" = "CS";
-    const text = (analyzed.rawEmail.snippet + " " + analyzed.subject).toLowerCase();
-    if (text.includes("kirim") || text.includes("resi") || text.includes("kurir") || text.includes("lambat")) {
-      division = "Logistik";
-    } else if (text.includes("refund") || text.includes("bayar") || text.includes("uang") || text.includes("tagih")) {
-      division = "Finance";
-    }
+    // Generate a contextual reply using Gemini directly
+    const draft = await generateText({
+      systemPrompt: `Anda adalah asisten email AI yang membantu menulis balasan email yang profesional dan relevan.
+Aturan:
+- Balas sesuai konteks dan isi email yang diterima
+- Gunakan bahasa yang sama dengan email pengirim (jika bahasa Indonesia, balas bahasa Indonesia; jika Inggris, balas Inggris)
+- Jangan mengarang fakta atau informasi yang tidak ada di email asli
+- Buat balasan yang ringkas, sopan, dan to-the-point
+- Jangan tambahkan signature/tanda tangan
+- Jangan sertakan "Subject:" di awal balasan
+- Langsung mulai dengan salam pembuka yang sesuai`,
 
-    const { draft, contextText } = await handleDivisionEmail(analyzed, division);
-    const evaluation = await evaluateDraft(analyzed, draft, contextText);
+      userPrompt: `Buatkan balasan untuk email berikut:
+
+Dari: ${sender}
+Subjek: ${subject}
+Isi email:
+${emailBody.slice(0, 3000)}
+
+Tulis balasan email yang relevan dan profesional:`,
+
+      temperature: 0.7,
+      maxTokens: 1024,
+    });
 
     const draftReplies: DraftReplies = {
       drafts: [
         {
-          body: draft,
+          body: draft.trim(),
           tone: "formal",
-          // @ts-ignore
-          evaluation,
         }
       ],
       quickActions: [],
-      suggestedTones: ["formal"],
-      isAutoReplySafe: !evaluation.hallucination_detected && evaluation.accuracy > 80,
+      suggestedTones: ["formal", "casual", "friendly"],
+      isAutoReplySafe: false,
     };
 
     return NextResponse.json<ApiResponse<DraftReplies>>({

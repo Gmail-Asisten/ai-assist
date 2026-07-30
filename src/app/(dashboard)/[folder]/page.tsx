@@ -20,19 +20,46 @@ import {
   ChevronRight,
   MessageSquare,
   X,
-  ArrowUpRight,
   RefreshCw,
+  Reply,
+  CornerUpLeft,
+  Loader2,
+  Edit3,
+  ChevronDown,
 } from "lucide-react";
 
 import { useParams } from "next/navigation";
 
+// ─── Reply Panel State ───────────────────────────────────────
+interface ReplyState {
+  isOpen: boolean;
+  isGenerating: boolean;
+  isSending: boolean;
+  body: string;
+  originalDraft: string;
+  isEditing: boolean;
+  sentSuccess: boolean;
+  sentError: string | null;
+}
+
+const DEFAULT_REPLY_STATE: ReplyState = {
+  isOpen: false,
+  isGenerating: false,
+  isSending: false,
+  body: "",
+  originalDraft: "",
+  isEditing: false,
+  sentSuccess: false,
+  sentError: null,
+};
+
 export default function FolderPage() {
   const params = useParams();
   const folder = (params?.folder as string) || "inbox";
-  
+
   // Format folder for UI display
   const folderTitle = folder.charAt(0).toUpperCase() + folder.slice(1);
-  
+
   // Map folder name to Gmail Label ID
   const labelIds = [folder.toUpperCase()];
   const { data: session } = useSession();
@@ -53,39 +80,76 @@ export default function FolderPage() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isProcessingEmail, setIsProcessingEmail] = useState(false);
   const processingRefs = useRef<Set<string>>(new Set());
+  // Ref to read latest emails synchronously inside useEffect without triggering re-runs
+  const emailsRef = useRef<PipelineResult[]>([]);
+  // Keep ref in sync — both via effect AND by direct assignment during render
+  emailsRef.current = emails;
+
+  // Reply panel state
+  const [reply, setReply] = useState<ReplyState>(DEFAULT_REPLY_STATE);
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
 
   const selectedData = emails.find((e) => e.emailId === selectedEmailId);
   const selectedEmail = selectedData?.analysis?.rawEmail;
 
   // Lazy load AI features for the selected email
   useEffect(() => {
-    if (!selectedEmailId || !accessToken || !selectedData) return;
-    
-    if (selectedData.summary || selectedData.classification || processingRefs.current.has(selectedEmailId)) {
-      return;
-    }
+    if (!selectedEmailId || !accessToken) return;
 
-    let isMounted = true;
-    processingRefs.current.add(selectedEmailId);
+    const currentData = emailsRef.current.find((e) => e.emailId === selectedEmailId);
+    if (!currentData) return;
+
+    // Skip if already processed
+    if (currentData.summary || currentData.classification) return;
+
+    // Skip if already fetching this email
+    if (processingRefs.current.has(selectedEmailId)) return;
+
+    const controller = new AbortController();
+    const emailIdForThisFetch = selectedEmailId; // capture for cleanup
+    processingRefs.current.add(emailIdForThisFetch);
     setIsProcessingEmail(true);
-    
+
     fetch("/api/agents/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emailId: selectedEmailId, accessToken, userId })
+      body: JSON.stringify({ emailId: emailIdForThisFetch, accessToken, userId }),
+      signal: controller.signal,
     })
       .then(res => res.json())
       .then(data => {
-        if (data.success && isMounted) {
-          setEmails(prev => prev.map(e => e.emailId === selectedEmailId ? data.data : e));
+        if (data.success) {
+          setEmails(prev => prev.map(e => e.emailId === emailIdForThisFetch ? data.data : e));
+          // Keep in processingRefs so we don't re-process
+        } else {
+          console.error("[AI Process] Failed:", data.error);
+          processingRefs.current.delete(emailIdForThisFetch);
         }
       })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("[AI Process] Error:", err);
+        }
+        // Always allow retry after any error (including abort)
+        processingRefs.current.delete(emailIdForThisFetch);
+      })
       .finally(() => {
-        if (isMounted) setIsProcessingEmail(false);
+        setIsProcessingEmail(false);
       });
 
-    return () => { isMounted = false; };
-  }, [selectedEmailId, accessToken, userId, selectedData]);
+    return () => {
+      controller.abort();
+      // Remove from processing set so a future effect can retry
+      processingRefs.current.delete(emailIdForThisFetch);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEmailId, accessToken, userId]);
+
+  // Reset reply panel when selecting a different email
+  useEffect(() => {
+    setReply(DEFAULT_REPLY_STATE);
+  }, [selectedEmailId]);
 
   const fetchEmails = useCallback(async (isBackground = false) => {
     if (!accessToken) return;
@@ -109,7 +173,7 @@ export default function FolderPage() {
       const data = await res.json();
       if (data.success) {
         const rawList = data.data.emails || [];
-        
+
         setEmails(prev => {
           return rawList.map((raw: any) => {
             const existing = prev.find(e => e.emailId === raw.id);
@@ -125,7 +189,7 @@ export default function FolderPage() {
             } as unknown as PipelineResult;
           });
         });
-        
+
         setSelectedEmailId(prev => {
           if (!prev && rawList.length > 0) return rawList[0].id;
           return prev;
@@ -143,13 +207,11 @@ export default function FolderPage() {
 
   // Initial fetch and polling
   useEffect(() => {
-    // Reset state when folder changes
     setEmails([]);
     setSelectedEmailId(null);
-    
+
     if (accessToken) {
       fetchEmails();
-      // Poll every 30 seconds for new emails
       const interval = setInterval(() => {
         fetchEmails(true);
       }, 30000);
@@ -164,6 +226,158 @@ export default function FolderPage() {
     ]);
   }, [selectedEmailId]);
 
+  // ─── Generate AI Draft Reply ──────────────────────────────
+  const handleGenerateReply = async () => {
+    if (!selectedEmailId || !accessToken) return;
+
+    setReply(prev => ({
+      ...prev,
+      isOpen: true,
+      isGenerating: true,
+      body: "",
+      originalDraft: "",
+      sentSuccess: false,
+      sentError: null,
+    }));
+
+    // Scroll down to reply panel
+    setTimeout(() => {
+      detailScrollRef.current?.scrollTo({
+        top: detailScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 100);
+
+    try {
+      const res = await fetch("/api/agents/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailId: selectedEmailId, accessToken }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.data?.drafts?.[0]?.body) {
+        const draftBody = data.data.drafts[0].body;
+        setReply(prev => ({
+          ...prev,
+          isGenerating: false,
+          body: draftBody,
+          originalDraft: draftBody,
+          isEditing: false,
+        }));
+      } else {
+        setReply(prev => ({
+          ...prev,
+          isGenerating: false,
+          sentError: data.error || "Gagal membuat draft balasan.",
+        }));
+      }
+    } catch {
+      setReply(prev => ({
+        ...prev,
+        isGenerating: false,
+        sentError: "Tidak dapat terhubung ke server.",
+      }));
+    }
+
+    // Scroll to bottom again after content loads
+    setTimeout(() => {
+      detailScrollRef.current?.scrollTo({
+        top: detailScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 400);
+  };
+
+  // Use a quick action or existing draft body directly
+  const handleUseQuickAction = (body: string) => {
+    setReply(prev => ({
+      ...prev,
+      isOpen: true,
+      body,
+      originalDraft: body,
+      isEditing: false,
+      sentSuccess: false,
+      sentError: null,
+    }));
+    setTimeout(() => {
+      detailScrollRef.current?.scrollTo({
+        top: detailScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 100);
+  };
+
+  // Use existing draft (already generated from pipeline)
+  const handleUseDraft = (body: string) => {
+    setReply(prev => ({
+      ...prev,
+      isOpen: true,
+      body,
+      originalDraft: body,
+      isEditing: false,
+      sentSuccess: false,
+      sentError: null,
+    }));
+    setTimeout(() => {
+      detailScrollRef.current?.scrollTo({
+        top: detailScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 100);
+  };
+
+  // ─── Send Reply ────────────────────────────────────────────
+  const handleSendReply = async () => {
+    if (!reply.body.trim() || !selectedEmail || !accessToken) return;
+
+    setReply(prev => ({ ...prev, isSending: true, sentError: null }));
+
+    try {
+      const res = await fetch("/api/gmail/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          to: selectedEmail.from,
+          subject: selectedEmail.subject.startsWith("Re:")
+            ? selectedEmail.subject
+            : `Re: ${selectedEmail.subject}`,
+          body: reply.body,
+          inReplyTo: selectedEmail.id,
+          threadId: selectedEmail.threadId,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setReply(prev => ({
+          ...prev,
+          isSending: false,
+          sentSuccess: true,
+          isEditing: false,
+        }));
+        // Auto-close after 3s
+        setTimeout(() => {
+          setReply(DEFAULT_REPLY_STATE);
+        }, 3000);
+      } else {
+        setReply(prev => ({
+          ...prev,
+          isSending: false,
+          sentError: data.error || "Gagal mengirim email.",
+        }));
+      }
+    } catch {
+      setReply(prev => ({
+        ...prev,
+        isSending: false,
+        sentError: "Tidak dapat terhubung ke server.",
+      }));
+    }
+  };
+
+  // ─── Chat Handler ─────────────────────────────────────────
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim() || !selectedEmail) return;
@@ -174,7 +388,6 @@ export default function FolderPage() {
     setChatMessage("");
     setIsChatLoading(true);
 
-    // Prepare global inbox context
     const globalInboxContext = emails.map((e) => ({
       id: e.emailId,
       from: e.analysis?.rawEmail?.from,
@@ -244,15 +457,15 @@ export default function FolderPage() {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* ─── Email List ─── */}
-      <div className="w-[380px] flex flex-col border-r border-border shrink-0 bg-background">
+      <div className="w-[300px] md:w-[340px] lg:w-[380px] flex flex-col border-r border-border shrink-0 bg-background">
         {/* Header */}
-        <div className="px-5 pt-5 pb-4">
+        <div className="px-4 md:px-5 pt-5 pb-4">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-foreground tracking-tight font-display">
               {folderTitle}
             </h2>
             <div className="flex items-center gap-2">
-              <button 
+              <button
                 onClick={() => fetchEmails(false)}
                 className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors"
                 disabled={isSyncing}
@@ -298,7 +511,7 @@ export default function FolderPage() {
                   onClick={() => setSelectedEmailId(email.id)}
                   whileTap={{ scale: 0.99 }}
                   className={`
-                    relative px-5 py-4 cursor-pointer transition-all duration-200 border-b border-border/50
+                    relative px-4 md:px-5 py-4 cursor-pointer transition-all duration-200 border-b border-border/50
                     ${isSelected
                       ? "bg-accent"
                       : "hover:bg-muted/50"
@@ -392,7 +605,10 @@ export default function FolderPage() {
       </div>
 
       {/* ─── Email Detail ─── */}
-      <div className="flex-1 flex flex-col overflow-y-auto bg-background">
+      <div
+        ref={detailScrollRef}
+        className="flex-1 flex flex-col overflow-y-auto bg-background min-w-0"
+      >
         <AnimatePresence mode="wait">
           {selectedData && selectedEmail ? (
             <motion.div
@@ -401,7 +617,7 @@ export default function FolderPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
-              className="max-w-3xl mx-auto w-full px-8 py-8 pb-16"
+              className="max-w-3xl mx-auto w-full px-4 md:px-8 py-8 pb-16"
             >
               {/* AI Summary Panel */}
               {isProcessingEmail && !selectedData.summary && (
@@ -490,142 +706,225 @@ export default function FolderPage() {
 
               {/* Email Header */}
               <div className="mb-8">
-                <h1 className="text-2xl font-bold text-foreground mb-5 tracking-tight font-display leading-tight">
+                <h1 className="text-xl md:text-2xl font-bold text-foreground mb-5 tracking-tight font-display leading-tight">
                   {selectedEmail.subject}
                 </h1>
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground">
-                    {selectedEmail.fromName ? selectedEmail.fromName.charAt(0) : selectedEmail.from.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">
-                      {selectedEmail.fromName || selectedEmail.from}
-                      <span className="font-normal text-muted-foreground ml-2 text-xs">
-                        &lt;{selectedEmail.from}&gt;
-                      </span>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0">
+                    <div className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
+                      {selectedEmail.fromName ? selectedEmail.fromName.charAt(0) : selectedEmail.from.charAt(0)}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      to me •{" "}
-                      {new Date(selectedEmail.date).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {selectedEmail.fromName || selectedEmail.from}
+                        <span className="font-normal text-muted-foreground ml-2 text-xs hidden sm:inline">
+                          &lt;{selectedEmail.from}&gt;
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        to me •{" "}
+                        {new Date(selectedEmail.date).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Reply Button */}
+                  <button
+                    onClick={handleGenerateReply}
+                    disabled={reply.isGenerating}
+                    className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-all duration-200 cursor-pointer border-none disabled:opacity-60"
+                  >
+                    {reply.isGenerating ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CornerUpLeft className="w-4 h-4" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {reply.isGenerating ? "Generating..." : "Reply"}
+                    </span>
+                  </button>
                 </div>
               </div>
 
               {/* Email Body */}
               <div
-                className="rounded-xl border border-border bg-card p-8 mb-10 text-foreground/80 leading-relaxed text-[15px] prose-p:mb-4 prose-strong:text-foreground overflow-x-hidden break-words"
+                className="rounded-xl border border-border bg-card p-5 md:p-8 mb-10 text-foreground/80 leading-relaxed text-[15px] prose-p:mb-4 prose-strong:text-foreground overflow-x-hidden break-words"
                 dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml || selectedEmail.bodyText }}
               />
 
-              {/* AI Draft Replies */}
-              {selectedData.draftReplies?.drafts && (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="flex items-center gap-2 font-bold text-sm text-foreground uppercase tracking-wider">
-                      <Bot className="w-4 h-4" />
-                      Smart Replies
-                    </h3>
-                    {(selectedData.draftReplies as any).handledByDivision && (
-                      <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Handled by: {(selectedData.draftReplies as any).handledByDivision} Division
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mb-5">
-                    {selectedData.draftReplies.quickActions.map((action, idx) => (
-                      <button
-                        key={idx}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-muted border border-border text-sm font-medium text-foreground hover:bg-accent hover:border-foreground/20 transition-all duration-200 cursor-pointer"
-                      >
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="space-y-4">
-                    {selectedData.draftReplies.drafts.map((draft, idx) => (
-                      <div
-                        key={idx}
-                        className="group rounded-xl border border-border bg-card p-5 hover:border-foreground/20 transition-all duration-200 relative"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                            {draft.tone}
-                          </span>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer bg-transparent">
-                              Edit
-                            </button>
-                            <button className="px-3 py-1.5 rounded-lg text-xs font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer border-none">
-                              Send Reply
-                            </button>
-                          </div>
-                        </div>
-                        <p className="whitespace-pre-wrap text-sm text-foreground/70 leading-relaxed">
-                          {draft.body}
-                        </p>
-                        
-                        {/* EVALUATOR UI */}
-                        {(draft as any).evaluation && (
-                          <div className="mt-5 pt-4 border-t border-border">
-                            <h4 className="text-xs font-bold text-foreground mb-3 flex items-center gap-2 uppercase tracking-wider">
-                              <Sparkles className="w-3.5 h-3.5" />
-                              Enterprise Evaluator Score (LLM-as-a-Judge)
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
-                                <span className="text-xs text-muted-foreground">Accuracy</span>
-                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.accuracy}%</span>
-                              </div>
-                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
-                                <span className="text-xs text-muted-foreground">Effectiveness</span>
-                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.effectiveness}%</span>
-                              </div>
-                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
-                                <span className="text-xs text-muted-foreground">Efficiency</span>
-                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.efficiency}%</span>
-                              </div>
-                              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border/50">
-                                <span className="text-xs text-muted-foreground">Explainability</span>
-                                <span className="text-xs font-bold text-foreground">{(draft as any).evaluation.explainability}%</span>
-                              </div>
-                            </div>
-                            {(draft as any).evaluation.hallucination_detected ? (
-                               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600">
-                                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                                 <div className="text-xs">
-                                   <strong>Hallucination Detected:</strong> {(draft as any).evaluation.feedback || "Agent might be hallucinating facts."}
-                                 </div>
-                               </div>
-                            ) : (
-                               <div className="flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600">
-                                 <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                                 <div className="text-xs leading-relaxed">
-                                   <strong>Safe:</strong> No hallucination detected. {(draft as any).evaluation.feedback}
-                                 </div>
-                               </div>
-                            )}
-                          </div>
-                        )}
+              {/* ─── Reply Panel ─────────────────────────────── */}
+              <AnimatePresence>
+                {reply.isOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.25 }}
+                    className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm"
+                  >
+                    {/* Reply Header */}
+                    <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <CornerUpLeft className="w-4 h-4 text-muted-foreground" />
+                        <span>Replying to <span className="text-muted-foreground font-normal">{selectedEmail.fromName || selectedEmail.from}</span></span>
                       </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
+                      <div className="flex items-center gap-2">
+                        {reply.body && !reply.isGenerating && (
+                          <button
+                            onClick={() => setReply(prev => ({ ...prev, isEditing: !prev.isEditing }))}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-transparent border border-border hover:border-foreground/20 rounded-lg transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            {reply.isEditing ? "Preview" : "Edit"}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setReply(DEFAULT_REPLY_STATE)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer bg-transparent border-none"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Reply Content */}
+                    <div className="p-5">
+                      {/* Generating state */}
+                      {reply.isGenerating && (
+                        <div className="flex flex-col items-center justify-center py-10 gap-3 text-muted-foreground">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center">
+                              <Sparkles className="w-5 h-5 text-foreground/60" />
+                            </div>
+                            <div className="absolute inset-0 rounded-full border-2 border-foreground/20 border-t-foreground/60 animate-spin" />
+                          </div>
+                          <p className="text-sm">Membuat draft balasan dengan AI...</p>
+                          <p className="text-xs text-muted-foreground/60">Menganalisis email dan konteks percakapan</p>
+                        </div>
+                      )}
+
+                      {/* Error state */}
+                      {reply.sentError && (
+                        <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 mb-4">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                          <div className="text-sm">{reply.sentError}</div>
+                        </div>
+                      )}
+
+                      {/* Success state */}
+                      {reply.sentSuccess && (
+                        <div className="flex flex-col items-center justify-center py-10 gap-3 text-green-600">
+                          <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                            <CheckCircle2 className="w-6 h-6" />
+                          </div>
+                          <p className="text-sm font-semibold">Email berhasil dikirim!</p>
+                          <p className="text-xs text-muted-foreground">Panel akan tertutup otomatis...</p>
+                        </div>
+                      )}
+
+                      {/* Draft body */}
+                      {!reply.isGenerating && !reply.sentSuccess && reply.body && (
+                        <>
+                          {reply.isEditing ? (
+                            <textarea
+                              ref={replyTextareaRef}
+                              value={reply.body}
+                              onChange={(e) => setReply(prev => ({ ...prev, body: e.target.value }))}
+                              className="w-full min-h-[200px] p-4 rounded-xl border border-border bg-background text-foreground text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all placeholder:text-muted-foreground/50"
+                              placeholder="Tulis balasan..."
+                              autoFocus
+                            />
+                          ) : (
+                            <div
+                              onClick={() => setReply(prev => ({ ...prev, isEditing: true }))}
+                              className="w-full min-h-[120px] p-4 rounded-xl border border-border bg-muted/20 text-foreground/80 text-sm leading-relaxed whitespace-pre-wrap cursor-text hover:bg-muted/30 hover:border-foreground/20 transition-all"
+                            >
+                              {reply.body}
+                            </div>
+                          )}
+
+                          {/* Original vs edited indicator */}
+                          {reply.body !== reply.originalDraft && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                              <span className="text-xs text-muted-foreground">Teks telah diedit</span>
+                              <button
+                                onClick={() => setReply(prev => ({ ...prev, body: prev.originalDraft }))}
+                                className="text-xs text-blue-500 hover:text-blue-600 bg-transparent border-none cursor-pointer p-0 underline"
+                              >
+                                Reset ke draft AI
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Empty body (generate button) */}
+                      {!reply.isGenerating && !reply.sentSuccess && !reply.body && !reply.sentError && (
+                        <div className="flex flex-col items-center justify-center py-8 gap-3 text-muted-foreground">
+                          <button
+                            onClick={handleGenerateReply}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-all cursor-pointer border-none"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            Generate AI Draft
+                          </button>
+                          <p className="text-xs">atau ketik balasan manual di bawah</p>
+                          <textarea
+                            value={reply.body}
+                            onChange={(e) => setReply(prev => ({ ...prev, body: e.target.value }))}
+                            placeholder="Tulis balasan manual..."
+                            className="w-full min-h-[120px] p-4 rounded-xl border border-border bg-background text-foreground text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all placeholder:text-muted-foreground/50 mt-2"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reply Footer / Actions */}
+                    {!reply.isGenerating && !reply.sentSuccess && reply.body && (
+                      <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
+                        <span className="text-xs text-muted-foreground">
+                          Ke: <span className="text-foreground font-medium">{selectedEmail.from}</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleGenerateReply}
+                            disabled={reply.isGenerating}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground border border-border hover:border-foreground/20 hover:text-foreground bg-transparent transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${reply.isGenerating ? "animate-spin" : ""}`} />
+                            Regenerate
+                          </button>
+                          <button
+                            onClick={handleSendReply}
+                            disabled={reply.isSending || !reply.body.trim()}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 transition-all cursor-pointer border-none disabled:opacity-50"
+                          >
+                            {reply.isSending ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Mengirim...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                Kirim Balasan
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
             </motion.div>
           ) : (
             <motion.div

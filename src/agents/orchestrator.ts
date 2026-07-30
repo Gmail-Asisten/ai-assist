@@ -151,7 +151,8 @@ export async function processEmail(
   }
 
   // Agent 4: Division Agent & Evaluator
-  if (!skipAgents.includes("reply")) {
+  // Only run when email actually needs a reply (per classifier routing decision)
+  if (classified.routing.shouldDraftReply && !skipAgents.includes("reply")) {
     parallelTasks.push(
       (async () => {
         try {
