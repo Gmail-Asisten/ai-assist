@@ -28,8 +28,8 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
 
   return (
     <>
-      <div className="flex justify-center w-full py-6 px-4">
-        <div className="flex items-center justify-between px-6 py-3 bg-white rounded-full shadow-lg w-full max-w-3xl relative z-10">
+      <div className="flex justify-center w-full py-4 px-4">
+        <div className="flex items-center justify-between px-6 py-3 bg-[#111113]/80 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl w-full max-w-3xl relative z-10">
           <div className="flex items-center">
             <motion.div
               className="flex items-center gap-2 mr-6"
@@ -47,7 +47,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                   </linearGradient>
                 </defs>
               </svg>
-              <span className="font-semibold text-sm text-gray-900 hidden sm:block">Mail Assistant</span>
+              <span className="font-semibold text-sm text-white hidden sm:block">Mail Assistant</span>
             </motion.div>
           </div>
 
@@ -61,7 +61,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                 transition={{ duration: 0.3 }}
                 whileHover={{ scale: 1.05 }}
               >
-                <a href="#" className="text-sm text-gray-900 hover:text-gray-600 transition-colors font-medium">
+                <a href="#" className="text-sm text-white/65 hover:text-white transition-colors font-medium">
                   {item}
                 </a>
               </motion.div>
@@ -82,7 +82,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                   whileHover={{ scale: 1.05 }}
                   src={session.user.image}
                   alt={session.user.name ?? "User"}
-                  className="w-8 h-8 rounded-full border-2 border-gray-200 cursor-pointer"
+                  className="w-8 h-8 rounded-full border-2 border-white/20 cursor-pointer"
                 />
               </Link>
             )}
@@ -91,7 +91,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.97 }}
               onClick={handleGetStarted}
-              className="inline-flex items-center justify-center px-5 py-2 text-sm text-white bg-black rounded-full hover:bg-gray-800 transition-colors cursor-pointer border-none"
+              className="inline-flex items-center justify-center px-5 py-2 text-sm text-white rounded-full cursor-pointer border-none font-semibold"  style={{ background: 'linear-gradient(135deg, #FF9966, #FF5E62)' }}
             >
               {status === "authenticated" ? "Go to Inbox" : "Get Started"}
             </motion.button>
@@ -99,7 +99,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
 
           {/* Mobile Menu Button */}
           <motion.button className="md:hidden flex items-center" onClick={toggleMenu} whileTap={{ scale: 0.9 }}>
-            <Menu className="h-6 w-6 text-gray-900" />
+            <Menu className="h-6 w-6 text-white/70" />
           </motion.button>
         </div>
 
@@ -107,7 +107,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
         <AnimatePresence>
           {isOpen && (
             <motion.div
-              className="fixed inset-0 bg-white z-50 pt-24 px-6 md:hidden"
+              className="fixed inset-0 bg-[#09090b] z-50 pt-24 px-6 md:hidden"
               initial={{ opacity: 0, x: "100%" }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: "100%" }}
@@ -121,7 +121,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
               >
-                <X className="h-6 w-6 text-gray-900" />
+                <X className="h-6 w-6 text-white/70" />
               </motion.button>
               <div className="flex flex-col space-y-6">
                 {["Features", "Pricing", "Docs", "Dashboard"].map((item, i) => (
@@ -132,7 +132,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                     transition={{ delay: i * 0.1 + 0.1 }}
                     exit={{ opacity: 0, x: 20 }}
                   >
-                    <a href="#" className="text-base text-gray-900 font-medium" onClick={toggleMenu}>
+                    <a href="#" className="text-base text-white/80 font-medium" onClick={toggleMenu}>
                       {item}
                     </a>
                   </motion.div>
@@ -147,7 +147,7 @@ const Navbar1 = ({ onLoginOpen }: Navbar1Props = {}) => {
                 >
                   <button
                     onClick={(e) => { toggleMenu(); handleGetStarted(e as any); }}
-                    className="inline-flex items-center justify-center w-full px-5 py-3 text-base text-white bg-black rounded-full hover:bg-gray-800 transition-colors cursor-pointer border-none"
+                    className="inline-flex items-center justify-center w-full px-5 py-3 text-base text-white rounded-full cursor-pointer border-none font-bold" style={{ background: 'linear-gradient(135deg, #FF9966, #FF5E62)' }}
                   >
                     {status === "authenticated" ? "Go to Inbox" : "Get Started"}
                   </button>

@@ -26,6 +26,7 @@ import {
   Loader2,
   Edit3,
   ChevronDown,
+  ChevronLeft,
 } from "lucide-react";
 
 import { useParams } from "next/navigation";
@@ -73,7 +74,7 @@ export default function FolderPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [chatMessage, setChatMessage] = useState("");
-  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatHistory, setChatHistory] = useState([
     { role: "ai", content: "Hi! I'm your AI assistant. Ask me anything about this email or your inbox." },
   ]);
@@ -191,7 +192,9 @@ export default function FolderPage() {
         });
 
         setSelectedEmailId(prev => {
-          if (!prev && rawList.length > 0) return rawList[0].id;
+          if (!prev && rawList.length > 0) {
+            return window.innerWidth >= 768 ? rawList[0].id : null;
+          }
           return prev;
         });
       } else {
@@ -457,7 +460,7 @@ export default function FolderPage() {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* ─── Email List ─── */}
-      <div className="w-[300px] md:w-[340px] lg:w-[380px] flex flex-col border-r border-border shrink-0 bg-background">
+      <div className={`w-full md:w-[340px] lg:w-[380px] flex-col border-r border-border shrink-0 bg-background ${selectedEmailId ? "hidden md:flex" : "flex"}`}>
         {/* Header */}
         <div className="px-4 md:px-5 pt-5 pb-4">
           <div className="flex items-center justify-between mb-4">
@@ -607,7 +610,7 @@ export default function FolderPage() {
       {/* ─── Email Detail ─── */}
       <div
         ref={detailScrollRef}
-        className="flex-1 flex flex-col overflow-y-auto bg-background min-w-0"
+        className={`flex-1 flex-col overflow-y-auto bg-background min-w-0 ${selectedEmailId ? "flex" : "hidden md:flex"}`}
       >
         <AnimatePresence mode="wait">
           {selectedData && selectedEmail ? (
@@ -706,9 +709,17 @@ export default function FolderPage() {
 
               {/* Email Header */}
               <div className="mb-8">
-                <h1 className="text-xl md:text-2xl font-bold text-foreground mb-5 tracking-tight font-display leading-tight">
-                  {selectedEmail.subject}
-                </h1>
+                <div className="flex items-start gap-3 mb-5">
+                  <button
+                    onClick={() => setSelectedEmailId(null)}
+                    className="md:hidden mt-0.5 flex items-center justify-center w-8 h-8 rounded-lg bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors border-none shrink-0"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight font-display leading-tight flex-1">
+                    {selectedEmail.subject}
+                  </h1>
+                </div>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3 md:gap-4 min-w-0">
                     <div className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
@@ -941,18 +952,18 @@ export default function FolderPage() {
         </AnimatePresence>
       </div>
 
-      {/* ─── AI Chat Sidebar ─── */}
+      {/* ─── AI Chat Floating Widget ─── */}
       <AnimatePresence>
         {isChatOpen && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 340, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="h-full border-l border-border bg-muted/20 flex flex-col shrink-0 overflow-hidden"
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-24 right-6 w-[340px] max-w-[calc(100vw-48px)] h-[550px] max-h-[calc(100vh-140px)] border border-border bg-card shadow-2xl rounded-2xl flex flex-col z-50 overflow-hidden"
           >
             {/* Chat Header */}
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
+            <div className="px-5 py-4 border-b border-border bg-muted/30 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-foreground flex items-center justify-center">
                   <Bot className="w-4 h-4 text-background" />
