@@ -47,11 +47,20 @@ export default function SummaryPage() {
         return;
       }
 
+      // Reduce payload size to prevent 413 Payload Too Large / Timeout errors
+      const minimalEmails = rawEmails.map((e: any) => ({
+        fromName: e.fromName,
+        from: e.from,
+        date: e.date,
+        subject: e.subject,
+        snippet: e.snippet
+      }));
+
       // 2. Generate Global Summary
       const sumRes = await fetch("/api/agents/global-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: rawEmails })
+        body: JSON.stringify({ emails: minimalEmails })
       });
       const sumData = await sumRes.json();
       
