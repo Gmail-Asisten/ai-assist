@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "@/lib/gemini";
 import { createGmailClient, fetchEmail } from "@/lib/gmail";
-import type { ApiResponse, DraftReplies } from "@/types";
+import type { ApiResponse, DraftReplies, DraftReply } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,15 +64,20 @@ Tulis balasan email yang relevan dan profesional:`,
     });
 
     const draftReplies: DraftReplies = {
+      emailId: emailId,
+      threadId: rawEmail.threadId || emailId,
+      inReplyTo: subject,
       drafts: [
         {
+          id: `draft-${Date.now()}`,
+          subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
           body: draft.trim(),
-          tone: "formal",
+          tone: "formal" as DraftReply["tone"],
+          confidence: 0.9,
+          includesContext: true,
         }
-      ],
+      ] satisfies DraftReply[],
       quickActions: [],
-      suggestedTones: ["formal", "casual", "friendly"],
-      isAutoReplySafe: false,
     };
 
     return NextResponse.json<ApiResponse<DraftReplies>>({
